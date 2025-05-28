@@ -8,7 +8,7 @@ function DataTable = CreateEEGDataTable(varargin)
 %% Parser Arguments - change these (or change the input to the function)
 p = inputParser;
 % what channels in EEG data are used to update triggers
-addOptional(p,'AnalysisType','Source')% Analysis type - i.e. source-based or electrode-based analysis
+addOptional(p,'AnalysisType','Both')% Analysis type - i.e. source-based, electrode-based, or both
 addOptional(p,'Num_Perts',2) % number of perturbations within each vicon trial (2 for perception)
 addOptional(p,'Electrode',{'Cz','C1','C2','CPz'}) % electrode ID
 addOptional(p,'Source',[1 2 3]) % source ID - !!!! Need to make sure it can handle multiple sources
@@ -34,10 +34,8 @@ files = dir(fullfile(fdir, '*.set')); % filter to ionly contain .set files
 addpath('D:\Users\SBOEBIN\Documents\EEGLAB\eeglab2024.2.1\eeglab2024.2.1')
 [ALLEEG, EEG, CURRENTSET, ALLCOM] = eeglab;
 
-%% initialize variables - Build Later
-% ERP = [];
-
 %% iterate across all files
+DataTable = table();  % Master table for all datasets
 for i = 1:size(files,1)
     %% load data
     filename = files(i).name;
@@ -55,61 +53,51 @@ for i = 1:size(files,1)
     
     [ALLEEG EEG CURRENTSET] = pop_newset(ALLEEG, EEG, i,'overwrite','on','gui','off');
     %% create data table
-    if strcmpi(p.Results.AnalysisType,'Electrode')
-        %% electrode-based outputs
+    % Initialize empty table
+    DataTable_tmp = table; % participant-specific data table
+    
+    % Electrode-based outputs
+    if strcmpi(p.Results.AnalysisType, 'Electrode') || strcmpi(p.Results.AnalysisType, 'Both')
         % Get indices of user-defined electrodes
         ind_chan = find(ismember({EEG.chanlocs.labels}, p.Results.Electrode));
-        % Extract ERP data: M x N x P (M = # electrodes, N = # samples, P = # epochs)
         ERP = EEG.data(ind_chan, :, :);  % size: M x N x P
         [M, N, P] = size(ERP);
-        % Permute to P x M x N for easy cell conversion
         ERP_perm = permute(ERP, [3, 1, 2]);  % size: P x M x N
-        % Preallocate cell array
         ERP_cell = cell(P, M);
-        % Fill cell array with 1×N double vectors
         for p_idx = 1:P
             for m_idx = 1:M
-                ERP_cell{p_idx, m_idx} = double(squeeze(ERP_perm(p_idx, m_idx, :)))';  % 1×N row vector
+                ERP_cell{p_idx, m_idx} = double(squeeze(ERP_perm(p_idx, m_idx, :)))';
             end
         end
-        % Create column names dynamically
         elec_labels = strcat(p.Results.Electrode, '_ERP');
-        % Convert to table
-        DataTable = cell2table(ERP_cell, 'VariableNames', elec_labels);
-        % Add time vector (EEG.times) as a new column to the table
-        time_vec = EEG.times;
-        DataTable.time = repmat(time_vec, P, 1);  % replicate for each epoch
-    elseif strcmpi(p.Results.AnalysisType,'Source')
-        %% source-based outputs
-        % Extract source activation data: M x N x P (M = # sources, N = # samples, P = # epochs)
+        ElectrodeTable = cell2table(ERP_cell, 'VariableNames', elec_labels);
+        % Append to main DataTable
+        DataTable_tmp = [DataTable_tmp ElectrodeTable];
+    end
+    
+    % Source-based outputs
+    if strcmpi(p.Results.AnalysisType, 'Source') || strcmpi(p.Results.AnalysisType, 'Both')
         ICact = EEG.icaact(p.Results.Source, :, :);  % size: M x N x P
         [M, N, P] = size(ICact);
-        % Permute to P x M x N for easy cell conversion
         ICact_perm = permute(ICact, [3, 1, 2]);  % size: P x M x N
-        % Preallocate cell array
         IC_cell = cell(P, M);
-        % Fill cell array with 1×N double vectors
         for p_idx = 1:P
             for m_idx = 1:M
-                IC_cell{p_idx, m_idx} = double(squeeze(ICact_perm(p_idx, m_idx, :)))';  % 1×N row vector
+                IC_cell{p_idx, m_idx} = double(squeeze(ICact_perm(p_idx, m_idx, :)))';
             end
         end
-        % Create column names dynamically
         IC_labels = cellstr("IC" + string(p.Results.Source) + "_act");
-        % Convert to table
-        DataTable = cell2table(IC_cell, 'VariableNames', IC_labels);
-        
-        % Add time vector (EEG.times) as a new column to the table
-        time_vec = EEG.times;
-        DataTable.time = repmat(time_vec, P, 1);  % replicate for each epoch
-        
-    else
-        error('Improper AnalysisType Specified')
+        SourceTable = cell2table(IC_cell, 'VariableNames', IC_labels);
+        % Append to main DataTable
+        DataTable_tmp = [DataTable_tmp SourceTable];
     end
+    % Add time vector (EEG.times) as a new column to the table
+    time_vec = EEG.times;
+    DataTable_tmp.time = repmat(time_vec, P, 1);  % replicate for each epoch
     %% Add participant and trial ID to DataTable
     % Repeat folder and filename for each epoch (P rows)
-    DataTable.folder = repmat({folder}, P, 1);
-    DataTable.filename = repmat({filename}, P, 1);
+    DataTable_tmp.folder = repmat({folder}, P, 1);
+    DataTable_tmp.filename = repmat({filename}, P, 1);
     % Define DA status based on filename content
     if contains(filename, 'ON', 'IgnoreCase', true)
         DA_status = repmat({'ON'}, P, 1);
@@ -118,7 +106,16 @@ for i = 1:size(files,1)
     else
         DA_status = repmat({'Unknown'}, P, 1); % Optional fallback
     end
-    DataTable.DA = DA_status;
+    DataTable_tmp.DA = DA_status;
+    
+    % Extract subject ID using regex from filename (e.g., PD001_ON.set → PD001)
+    tokens = regexp(filename, '^(OA|PD)\d{3}', 'match');
+    if ~isempty(tokens)
+        subj_ID_val = tokens{1};
+    else
+        subj_ID_val = 'Unknown'; % Optional fallback
+    end
+    DataTable_tmp.subj_ID = repmat({subj_ID_val}, P, 1);  % Add to DataTable
     
     % Extract trial type from EEG.epoch.eventtype
     if isfield(EEG.epoch, 'eventtype')
@@ -131,10 +128,10 @@ for i = 1:size(files,1)
                 trial_type{ep} = trial_type_raw{ep};
             end
         end
-        DataTable.trial_type = trial_type;
+        DataTable_tmp.trial_type = trial_type;
     else
         warning('EEG.epoch.eventtype not found. Filling trial_type with NaNs');
-        DataTable.trial_type = repmat({NaN}, P, 1);
+        DataTable_tmp.trial_type = repmat({NaN}, P, 1);
     end
     %% perform time-frequency analysis - Build Later
     %     figure;
@@ -152,11 +149,13 @@ for i = 1:size(files,1)
     %     beta_ersp = [beta_ersp; mean(ersp(ind_beta,:),1)];
     %     gamma_ersp = [gamma_ersp; mean(ersp(ind_gamma,:),1)];
     %     time_ersp = [time_ersp; times_ersp];
+    %% append data tables
+    DataTable = [DataTable; DataTable_tmp];
 end
 %% save eeg table
 % Reorder DataTable so that filename, trial_type, and folder are first
 varNames = DataTable.Properties.VariableNames;
-priorityVars = {'filename', 'trial_type', 'DA'};
+priorityVars = {'subj_ID', 'trial_type', 'DA'};
 remainingVars = setdiff(varNames, priorityVars, 'stable');
 DataTable = DataTable(:, [priorityVars, remainingVars]);
 
@@ -165,4 +164,6 @@ try
 catch
     savedir = uigetdir('C:\','Select where to save data table');
 end
-save([savedir '\' folder '_' date '.mat'],'DataTable')
+if savedir ~= 0 % save only if savedir is specified by uigetdir()
+    save([savedir '\' folder '_' date '.mat'],'DataTable')
+end
