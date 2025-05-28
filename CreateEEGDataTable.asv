@@ -82,22 +82,22 @@ for i = 1:size(files,1)
     elseif strcmpi(p.Results.AnalysisType,'Source')
         %% source-based outputs
         % Extract source activation data: M x N x P (M = # sources, N = # samples, P = # epochs)
-        ICact = EEG.icaact(p.Results.Source, :, :);  % size: M x N x P
-        [M, N, P] = size(ICact);
+        ICAact = EEG.icaact(p.Results.Source, :, :);  % size: M x N x P
+        [M, N, P] = size(ICAact);
         % Permute to P x M x N for easy cell conversion
-        ICact_perm = permute(ICact, [3, 1, 2]);  % size: P x M x N
+        ICAact_perm = permute(ICAact, [3, 1, 2]);  % size: P x M x N
         % Preallocate cell array
-        IC_cell = cell(P, M);
+        ICA_cell = cell(P, M);
         % Fill cell array with 1×N double vectors
         for p_idx = 1:P
             for m_idx = 1:M
-                IC_cell{p_idx, m_idx} = double(squeeze(ICact_perm(p_idx, m_idx, :)))';  % 1×N row vector
+                ICA_cell{p_idx, m_idx} = double(squeeze(ICAact_perm(p_idx, m_idx, :)))';  % 1×N row vector
             end
         end
         % Create column names dynamically
-        IC_labels = cellstr("IC" + string(p.Results.Source) + "_act");
+        ICA_labels = strcat(num2cell(p.Results.Source), '_ICAact');
         % Convert to table
-        DataTable = cell2table(IC_cell, 'VariableNames', IC_labels);
+        DataTable = cell2table(ICA_cell, 'VariableNames', ICA_labels);
         
         % Add time vector (EEG.times) as a new column to the table
         time_vec = EEG.times;

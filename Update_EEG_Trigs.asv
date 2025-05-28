@@ -23,14 +23,13 @@ latencies = cell2mat({EEG.event.latency});
 type = {EEG.event.type};
 start_code = type{2}; % hacky? yes. Does it work? only if the 2nd trigger is the recording start code
 ind_recordstart = strcmp(type,start_code);
+
 latencies_pert1 = latencies(ind_recordstart);
 
-% Make figure
+% Identify perturbation onset from eeg acceleration.
 figure
 % set(gcf,'WindowState','maximized')
 set(gcf,'WindowStyle','docked')
-
-% iterate across each trial
 x = 0;
 for i = 1:length(latencies)
     if ~strcmp(type{i},start_code) % if the EEG event code is not for trial start -- skip
