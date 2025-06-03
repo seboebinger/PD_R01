@@ -15,7 +15,7 @@ addOptional(p,'Source',[1 2 3]) % source ID - !!!! Need to make sure it can hand
 addOptional(p,'target_codes',{'first','second','single'}) % trigger codes of interest for epoching
 addOptional(p,'epoch_window', [-3  12]) % time window to epoch around (in s) [start_time, end_time]
 
-% ERSP parameters - Build Later
+% ERSP parameters - Build Later?
 % addOptional(p,'ersp_winsize',256) % ersp sliding window size
 % addOptional(p,'ersp_baseline',[-500 -100])% ERSP baseline window. NaN = no baseline removal
 % addOptional(p,'ersp_waveletparams', [3 0.8]) % ERSP wavelet parameters
@@ -133,7 +133,7 @@ for i = 1:size(files,1)
         warning('EEG.epoch.eventtype not found. Filling trial_type with NaNs');
         DataTable_tmp.trial_type = repmat({NaN}, P, 1);
     end
-    %% perform time-frequency analysis - Build Later
+    %% perform time-frequency analysis - Build Later?
     %     figure;
     %     [ersp, itc, powbase, times_ersp, frequencies] = pop_newtimef(EEG, 1, electrode, [-1000  1998], ersp_waveletparams,...
     %         'topovec', electrode, 'elocs', EEG.chanlocs, 'chaninfo', EEG.chaninfo, 'caption', [filename ' Cz'],...
